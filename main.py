@@ -47,6 +47,17 @@ else:
 
 # !ls -la
 
+# # Importing libraries
+#
+# ## My modules
+#
+# There are several modules outside of this notebook:
+# - `loss.py` Contains `DynamicWeightCrossEntropy`, a loss function based on Cross Entropy, which estimates frequency for each label based on the input batches, and uses it to update an internal, running estimate of the label frequencies. This estimate is used as a weight to `torch.nn.functional.cross_entropy` in order to scale the loss value (and hence gradients w.r.t. model parameters) per-label.
+# - `lob_dataset.py` Contains my implementation for the dataset of this task (`LobDataset`), and the dataset used by the DeepLOB paper (Zhang, Zohren, Roberts), as a check to see if the pre-processing steps match. My implementation optionally supports "window skipping", i.e. putting some evenly distributed space between the starting index of each input window; additionally, it is possible to use a `ShuffleDatasetIndices` callback which, at the end of each epoch, randomizes the starting point of each window. This allows for both the benefit of subsampling the dataset and having shorter epochs, without the drawback of unconditionally discarding training examples (which happens when using only window skipping).
+# - `lob_models_1d.py` contains a purely sequential 1D convolutional neural network, to compare with the approaches of (Tsantekidis et al.) and (Zhang et al.).
+# - `lob_models_2d.py` contains both the original DeepLOB model by the authors of the DeepLOB paper (called `TheirDeepLob`), and my reproduction of the model from (Tsantekidis et al.), called `Lob2dCNN`.
+# - `lob_lightning_model.py` contains the `pytorch_lightning.LightningModule` which encapsulates training of each of the models described above. It takes care of optimization, computing metrics and logging them to Weights & Biases.
+
 # +
 # load packages
 import pandas as pd
@@ -69,6 +80,7 @@ from lob_datasets import LobDataset, TheirDataset
 from lob_models_1d import Lob1dCNN, ResBlock1d
 from lob_models_2d import TheirDeepLob, Lob2dCNN
 from lightning_model import LobLightningModule
+
 # -
 
 
@@ -122,20 +134,25 @@ print(y_training_data.shape)
 # 'best-ask price', 'best-ask volume', 'best-bid price', 'best-bid volume', '2-lev ask price', '2-levl ask volume', '2-lev bid price', '2-lev bid volume', ....
 #
 
-
+# # My dataset instantiation
+#
+# I defined one dictionary of kwargs to pass to each dataset. Explanation of the parameters:
+# - `window_len` is the length of input sequences for the model
+# - `window_skip` controls the "window skipping" described previously. The starting index of each window is at a distance `window_skip` from the previous. Having `window_skip=2` means having half of the instances per-epoch. Using the `ShuffleDatasetIndices` callback affects this by adding a random number $r \in [0,\text{window_skip}$ used to offset the starting (and ending) point of each window.
+# - `data_fmt` either `'2d'` or `'1d'`. Since I am using models which contain both 1D and 2D CNNs, I need to change the input shape according to the model at hand. This parameter controls the shape of input tensors, either `(batch, 1, height, width)` where `height` is sequence length, and `width` is the 40 orderbook levels in case of 2D CNNs, and `(batch, chan, sequence_len)` in the case of 1D CNNs, where `chan` equals 40.
 
 
 # +
-
+### commented because this code is quite expensive (and i don't use their datasets)
 # their_dataset = TheirDataset(data=dec_train, k=4, num_classes=3, T=100)
 # train_dataset = LobDataset(data=dec_train, k=4, num_classes=3, T=100)
 # val_dataset = LobDataset(data=dec_val, k=4, num_classes=3, T=100)
 # test_dataset = LobDataset(data=dec_test, k=4, num_classes=3, T=100)
 
 dataset_kwargs = {
-    'window_len':100,
-    'window_skip':2,
-    'data_fmt': '2d' # or '2d' if using 2d cnns
+    "window_len": 100,
+    "window_skip": 2,
+    "data_fmt": "2d",  # or '2d' if using 2d cnns
 }
 
 train_dataset = dataset = LobDataset(x_training_data, y_training_data, **dataset_kwargs)
@@ -151,16 +168,19 @@ seq, labels = elem.values()
 # their_elem = their_dataset[0]
 # their_seq, their_labels = their_elem
 (
-    seq.shape, labels.shape, 
+    seq.shape,
+    labels.shape,
     # their_seq.shape, their_labels.shape
 )
+
 
 # +
 # assert (seq == their_seq.to(seq.dtype)).all()
 # assert (labels == their_labels.to(labels.dtype)).all()
 # -
-
-
+# ### The `ShuffleDatasetIndices` callback
+#
+# This is a pytorch lightning callback, and it is implemented by simply calling the `reset()` method of the `LobDataset`.
 
 
 class ShuffleDatasetIndices(pl.Callback):
@@ -171,6 +191,10 @@ class ShuffleDatasetIndices(pl.Callback):
         trainer.val_dataloaders[0].dataset.reset()
 
 
+# # Training code
+#
+# Instantiation of the model, dataloaders, loggers and callbacks
+
 # +
 # try:
 #     logger.experiment.finish()
@@ -179,15 +203,21 @@ class ShuffleDatasetIndices(pl.Callback):
 logger = pl.loggers.WandbLogger(project="ai4t-DeepLobster")
 callbacks = [
     ShuffleDatasetIndices(),
-    pl.callbacks.EarlyStopping(monitor='val/loss', patience=15),
-    
+    pl.callbacks.EarlyStopping(monitor="val/loss", patience=15),
 ]
+# -
 
+
+# #### Note on batch size
+#
+# Authors of (Tsantekidis et al.) use a very small batch size of 16, which also leads to slow training. They also don't report their learning rate, to the best of my knowledge. Hence I determined a LR of `1e-3` to reproduce their performance on the test set.
+#
+# I scale the batch size to $64 = 4*16$ and, following a common rule of thumb, set the learning rate to `4e-3`, scaling it by the same factor as the batch size.
 
 # +
 BATCH_SIZE = 64
 
-#their_cnn = TheirDeepLob(dropout=0.5)
+# their_cnn = TheirDeepLob(dropout=0.5)
 
 my_cnn = Lob2dCNN(dropout=0.1)
 
@@ -201,7 +231,7 @@ model = LobLightningModule(
     train_dataset=train_dataset,
     val_dataset=val_dataset,
     test_dataset=test_dataset,
-    batch_size = BATCH_SIZE,
+    batch_size=BATCH_SIZE,
     # loss_criterion=DynamicWeightCrossEntropy(n_classes=3, decay=0.9, minimum_weight=0.01),
 )
 
@@ -226,7 +256,7 @@ trainer = pl.Trainer(
 try:
     trainer.fit(model)
 except KeyboardInterrupt:
-    print('interrupting training....')
+    print("interrupting training....")
 finally:
     test_result = trainer.test()
     print(test_result)
@@ -235,4 +265,4 @@ finally:
 if False:
     logger.experiment.finish()
 
-model.loss.weight
+# model.loss.weight
