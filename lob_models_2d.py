@@ -44,14 +44,9 @@ class Lob2dCNN(nn.Module):
         )
 
     def forward(self, x):
-        try:
-            out = self.conv1(x).squeeze(-1)
-            out = self.conv2(out)
-            out = self.fc(out)
-        except Exception as e:
-            import ipdb
-
-            ipdb.set_trace()
+        out = self.conv1(x).squeeze(-1)
+        out = self.conv2(out)
+        out = self.fc(out)
         return out
 
 

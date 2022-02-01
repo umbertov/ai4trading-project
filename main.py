@@ -152,7 +152,7 @@ print(y_training_data.shape)
 dataset_kwargs = {
     "window_len": 100,
     "window_skip": 2,
-    "data_fmt": "2d",  # or '2d' if using 2d cnns
+    "data_fmt": "1d",  # or '2d' if using 2d cnns
 }
 
 train_dataset = dataset = LobDataset(x_training_data, y_training_data, **dataset_kwargs)
@@ -203,7 +203,7 @@ class ShuffleDatasetIndices(pl.Callback):
 logger = pl.loggers.WandbLogger(project="ai4t-DeepLobster")
 callbacks = [
     ShuffleDatasetIndices(),
-    pl.callbacks.EarlyStopping(monitor="val/loss", patience=15),
+    pl.callbacks.EarlyStopping(monitor="val/loss", patience=5),
 ]
 # -
 
@@ -218,11 +218,11 @@ callbacks = [
 BATCH_SIZE = 64
 
 # their_cnn = TheirDeepLob(dropout=0.5)
+# my_cnn = Lob2dCNN(dropout=0.1)
+my_1d_cnn = Lob1dCNN(dropout=0.1)
 
-my_cnn = Lob2dCNN(dropout=0.1)
-
-cnn = my_cnn
-optimizer = torch.optim.Adam(cnn.parameters(), lr=4e-3)
+cnn = my_1d_cnn
+optimizer = torch.optim.Adam(cnn.parameters(), lr=1e-3)
 
 
 model = LobLightningModule(
@@ -258,7 +258,7 @@ try:
 except KeyboardInterrupt:
     print("interrupting training....")
 finally:
-    test_result = trainer.test()
+    test_result = trainer.test(ckpt_path="best")
     print(test_result)
     logger.experiment.finish()
 
