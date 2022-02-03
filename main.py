@@ -152,7 +152,7 @@ print(y_training_data.shape)
 dataset_kwargs = {
     "window_len": 100,
     "window_skip": 2,
-    "data_fmt": "1d",  # or '2d' if using 2d cnns
+    "data_fmt": "2d",  # or '1d' if using 1d cnns
 }
 
 train_dataset = dataset = LobDataset(x_training_data, y_training_data, **dataset_kwargs)
@@ -217,11 +217,13 @@ callbacks = [
 # +
 BATCH_SIZE = 64
 
-# their_cnn = TheirDeepLob(dropout=0.5)
-# my_cnn = Lob2dCNN(dropout=0.1)
-my_1d_cnn = Lob1dCNN(dropout=0.1)
+# DeepLOB (Zhang et al.)
+# cnn = TheirDeepLob(dropout=0.5)
+# (Tsantekidis et al. model)
+cnn = Lob2dCNN(dropout=0.1)
+# 1d model from me (not very good performance)
+# cnn = Lob1dCNN(dropout=0.1)
 
-cnn = my_1d_cnn
 optimizer = torch.optim.Adam(cnn.parameters(), lr=1e-3)
 
 

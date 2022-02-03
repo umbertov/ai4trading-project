@@ -48,14 +48,20 @@ class Lob1dCNN(nn.Module):
             # nn.BatchNorm2d(16),
             nn.Conv1d(40, 20, kernel_size=1, groups=20, padding="same"),
             nn.Conv1d(20, 10, kernel_size=1, groups=10, padding="same"),
+            nn.BatchNorm1d(10),
+            activation,
         )
         conv2 = nn.Sequential(
             nn.Conv1d(40, 20, kernel_size=2, groups=20, padding="same"),
             nn.Conv1d(20, 10, kernel_size=2, groups=10, padding="same"),
+            nn.BatchNorm1d(10),
+            activation,
         )
         conv3 = nn.Sequential(
             nn.Conv1d(40, 20, kernel_size=2, groups=1, padding="same"),
             nn.Conv1d(20, 10, kernel_size=2, groups=1, padding="same"),
+            nn.BatchNorm1d(10),
+            activation,
         )
 
         self.arch = nn.Sequential(
@@ -73,6 +79,7 @@ class Lob1dCNN(nn.Module):
             #
             # ResBlock1d(32, (5,), dropout=dropout),
             #
+            nn.Conv1d(32, 32, kernel_size=(3,), dilation=2),
             nn.Conv1d(32, 32, kernel_size=(3,), stride=2),
             nn.BatchNorm1d(32),
             activation,
